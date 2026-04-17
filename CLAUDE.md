@@ -21,7 +21,7 @@ docker build -f Dockerfiles/alpine/Dockerfile \
 grype base-alpine:local --output json --file grype-results-alpine.json
 
 # Run the Claude analysis script against local scan results
-ANTHROPIC_API_KEY=<key> python3.14 .github/scripts/analyse-scan-results.py ./
+ANTHROPIC_API_KEY=<key> python3 .github/scripts/analyse-scan-results.py ./
 ```
 
 ## Architecture
