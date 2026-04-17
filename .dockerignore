@@ -1,0 +1,18 @@
+# Exclude non-certificate files from every Docker build context so they never
+# end up inside a built image.
+
+# Documentation and placeholder files in the certs/ directory
+certs/README.md
+certs/.gitkeep
+certs/**/*.md
+
+# Git metadata
+.git
+.gitignore
+
+# GitHub Actions — not needed at runtime
+.github/
+
+# Repository documentation
+README.md
+LICENSE
