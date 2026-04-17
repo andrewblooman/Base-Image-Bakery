@@ -181,6 +181,63 @@ jobs:
           cosign sign --yes \
             "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
 
+      # ── Attest SBOM and build provenance (Sigstore / Rekor) ───────────────
+      - name: Attest SBOM with Cosign
+        if: github.event_name != 'pull_request'
+        run: |
+          cosign attest --yes \
+            --predicate "sbom-${{ matrix.image.name }}.spdx.json" \
+            --type spdxjson \
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
+
+      - name: Generate and attest build provenance
+        if: github.event_name != 'pull_request'
+        run: |
+          cat > provenance.json <<EOF
+          {
+            "builder": {
+              "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            },
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@${{ github.ref }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                },
+                "entryPoint": ".github/workflows/build-images.yml"
+              },
+              "parameters": {},
+              "environment": {
+                "github_event_name": "${{ github.event_name }}",
+                "github_ref": "${{ github.ref }}",
+                "github_run_id": "${{ github.run_id }}"
+              }
+            },
+            "metadata": {
+              "buildInvocationID": "${{ github.run_id }}/${{ github.run_attempt }}",
+              "completeness": {
+                "parameters": false,
+                "environment": false,
+                "materials": false
+              },
+              "reproducible": false
+            },
+            "materials": [
+              {
+                "uri": "git+https://github.com/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                }
+              }
+            ]
+          }
+          EOF
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
+
   # ─────────────────────────────────────────────────────────────────────────────
   # Review all scan results with Claude after every build run
   # ─────────────────────────────────────────────────────────────────────────────
@@ -206,5 +263,22 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          set -euo pipefail
           python3 .github/scripts/analyse-scan-results.py scan-results/ \
-            >> "$GITHUB_STEP_SUMMARY"
+            | tee -a "$GITHUB_STEP_SUMMARY" > /tmp/claude-summary.md
+
+      - name: Generate GitHub App token
+        id: app-token
+        if: github.event_name == 'pull_request'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Post security summary as PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/claude-summary.md
