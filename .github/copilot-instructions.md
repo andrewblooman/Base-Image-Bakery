@@ -12,7 +12,7 @@ Build from the **repo root** — the Docker context must include `certs/`:
 docker build -f Dockerfiles/alpine/Dockerfile \
   --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
   --build-arg VCS_REF=$(git rev-parse --short HEAD) \
-  --build-arg VERSION=3.21 \
+  --build-arg ALPINE_VERSION=3.21 \
   --build-arg IMAGE_SOURCE=https://github.com/andrewblooman/Base-Image-Bakery \
   -t base-alpine:local .
 ```
@@ -55,7 +55,7 @@ Uses only the Python standard library — no third-party packages, no Anthropic 
 
 Every Dockerfile must follow this order and include all of these elements:
 
-1. `ARG <NAME>_VERSION=<default>` then `FROM image:${VERSION}` — version controlled via ARG
+1. `ARG <NAME>_VERSION=<default>` then `FROM image:${<NAME>_VERSION}` — base image version controlled via the image-specific ARG
 2. Declare `BUILD_DATE`, `VCS_REF`, `VERSION`, `IMAGE_SOURCE` build args
 3. Install `ca-certificates`, then `COPY certs/ /usr/local/share/ca-certificates/custom/` and run the OS cert-update command
 4. Apply security patches (`apk upgrade --no-cache` for Alpine; `apt-get upgrade -y` + cleanup for Debian)
