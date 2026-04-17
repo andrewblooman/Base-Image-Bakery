@@ -1,20 +1,19 @@
 ARG JAVA_VERSION=21
-FROM eclipse-temurin:${JAVA_VERSION}-jre-jammy
+FROM cgr.dev/chainguard/jre:latest-dev
 
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION=21
 ARG IMAGE_SOURCE
 
-# Install ca-certificates tooling and copy custom CA certificates
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+USER root
 
+# Install ca-certificates and import custom certs from the repo's certs/ directory
+RUN apk add --no-cache ca-certificates
 COPY certs/ /usr/local/share/ca-certificates/custom/
 RUN update-ca-certificates
 
-# Import custom certs into the Java keystore (harmless no-op when directory is empty)
+# Import custom certs into the JVM truststore (no-op when certs/ is empty)
 RUN find /usr/local/share/ca-certificates/custom -name "*.crt" -type f \
     | while read -r cert; do \
         alias_name="custom-$(basename "$cert" .crt)"; \
@@ -25,24 +24,16 @@ RUN find /usr/local/share/ca-certificates/custom -name "*.crt" -type f \
             -storepass changeit; \
     done
 
-# Apply latest security patches
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/*
-
 # OCI-standard image labels
-LABEL org.opencontainers.image.title="Base Eclipse Temurin" \
-      org.opencontainers.image.description="Custom Eclipse Temurin JRE base image with imported CA certificates and security defaults" \
+LABEL org.opencontainers.image.title="Base JRE" \
+      org.opencontainers.image.description="Custom JRE base image (Chainguard/Wolfi) with imported CA certificates and security defaults" \
       org.opencontainers.image.vendor="Base Image Bakery" \
       org.opencontainers.image.source="${IMAGE_SOURCE}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.base.name="eclipse-temurin:${JAVA_VERSION}-jre-jammy"
+      org.opencontainers.image.base.name="cgr.dev/chainguard/jre:latest-dev"
 
-# Create a non-root application user
-RUN groupadd -r appgroup && useradd -r -g appgroup -m appuser
-
-USER appuser
+USER nonroot
 
 CMD ["/bin/bash"]

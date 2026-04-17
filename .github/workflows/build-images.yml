@@ -27,10 +27,10 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build, scan, sign and push each image in parallel
+  # Build each image locally, run vulnerability scan and generate SBOM
   # ─────────────────────────────────────────────────────────────────────────────
-  build-and-push:
-    name: "${{ matrix.image.name }}"
+  build-scan-sbom:
+    name: "Build & Scan: ${{ matrix.image.name }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -66,13 +66,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # ── Generate OCI-standard tags and labels ──────────────────────────────
       - name: Extract Docker metadata
@@ -120,7 +113,6 @@ jobs:
           grype "bakery/${{ matrix.image.name }}:scan-target" \
             --output json \
             --file "grype-results-${{ matrix.image.name }}.json"
-          echo "Scan complete for ${{ matrix.image.name }}"
 
       - name: Upload Grype scan results
         uses: actions/upload-artifact@v4
@@ -142,7 +134,6 @@ jobs:
           syft "bakery/${{ matrix.image.name }}:scan-target" \
             --output spdx-json \
             --file "sbom-${{ matrix.image.name }}.spdx.json"
-          echo "SBOM generated for ${{ matrix.image.name }}"
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
@@ -151,10 +142,75 @@ jobs:
           path: sbom-${{ matrix.image.name }}.spdx.json
           retention-days: 90
 
-      # ── Push to Docker Hub ─────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Push to Docker Hub, sign with Cosign, and attest SBOM + provenance
+  # Skipped on pull requests — only runs on push to main and scheduled builds
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish:
+    name: "Publish & Sign: ${{ matrix.image.name }}"
+    runs-on: ubuntu-latest
+    needs: build-scan-sbom
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: alpine
+            dockerfile: Dockerfiles/alpine/Dockerfile
+            repo: base-alpine
+            version: "3.21"
+          - name: dind
+            dockerfile: Dockerfiles/docker-in-docker/Dockerfile
+            repo: base-dind
+            version: "27"
+          - name: eclipse-temurin
+            dockerfile: Dockerfiles/eclipse-temurin/Dockerfile
+            repo: base-eclipse-temurin
+            version: "21"
+          - name: python
+            dockerfile: Dockerfiles/python/Dockerfile
+            repo: base-python
+            version: "3.13"
+          - name: golang
+            dockerfile: Dockerfiles/golang/Dockerfile
+            repo: base-golang
+            version: "1.24"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Generate OCI-standard tags and labels ──────────────────────────────
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ matrix.image.version }}
+            type=sha,prefix=sha-
+            type=schedule,pattern={{date 'YYYYMMDD'}}
+          labels: |
+            org.opencontainers.image.title=Base ${{ matrix.image.name }}
+            org.opencontainers.image.vendor=Base Image Bakery
+            org.opencontainers.image.version=${{ matrix.image.version }}
+
+      # ── Build and push to Docker Hub (GHA cache makes this fast) ──────────
       - name: Build and push image to Docker Hub
         id: push
-        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -172,18 +228,20 @@ jobs:
 
       # ── Keyless signing with Cosign (Sigstore / Fulcio / Rekor) ───────────
       - name: Install Cosign
-        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v3
 
       - name: Sign container image with Cosign (keyless)
-        if: github.event_name != 'pull_request'
         run: |
           cosign sign --yes \
             "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
 
       # ── Attest SBOM and build provenance (Sigstore / Rekor) ───────────────
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ matrix.image.name }}
+
       - name: Attest SBOM with Cosign
-        if: github.event_name != 'pull_request'
         run: |
           cosign attest --yes \
             --predicate "sbom-${{ matrix.image.name }}.spdx.json" \
@@ -191,7 +249,6 @@ jobs:
             "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
 
       - name: Generate and attest build provenance
-        if: github.event_name != 'pull_request'
         run: |
           cat > provenance.json <<EOF
           {
@@ -244,7 +301,7 @@ jobs:
   review-scan-results:
     name: Review Vulnerability Scan Results with Claude
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: build-scan-sbom
     # Run even when some matrix jobs fail so we always get a security summary
     if: always()
     permissions:
