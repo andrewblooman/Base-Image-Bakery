@@ -23,8 +23,9 @@ All images include:
 - ✅ OCI-standard image labels (`org.opencontainers.image.*`)
 - ✅ Non-root application user (except Docker-in-Docker, which requires root)
 - ✅ Vulnerability scan report (Grype) stored as a workflow artefact
-- ✅ SBOM in SPDX JSON format stored as a workflow artefact
+- ✅ SBOM in SPDX JSON format stored as a workflow artefact and attested in Rekor
 - ✅ Cosign keyless signature verifiable via Sigstore / Rekor
+- ✅ SLSA build provenance attestation in Rekor
 
 ---
 
@@ -70,9 +71,35 @@ Replace `base-alpine` with the image you are verifying. A successful verificatio
 Rekor transparency-log entry and confirms the image was produced by this repository's
 GitHub Actions workflow.
 
+### Verifying the SBOM attestation
+
+The SBOM is attached to each image as a Cosign attestation in Rekor, in addition to being
+available as a workflow artefact:
+
+```bash
+cosign verify-attestation \
+  --type spdxjson \
+  --certificate-identity-regexp="https://github.com/andrewblooman/Base-Image-Bakery/.github/workflows/build-images.yml" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  andrewblooman/base-alpine:latest
+```
+
+### Verifying build provenance
+
+Each image includes a SLSA provenance attestation recording the repository, commit SHA, and
+GitHub Actions run that produced it:
+
+```bash
+cosign verify-attestation \
+  --type slsaprovenance \
+  --certificate-identity-regexp="https://github.com/andrewblooman/Base-Image-Bakery/.github/workflows/build-images.yml" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  andrewblooman/base-alpine:latest
+```
+
 ### Checking the SBOM
 
-SPDX JSON SBOMs are attached to every workflow run as artefacts.  
+SPDX JSON SBOMs are attached to every workflow run as artefacts and as a Cosign attestation.  
 You can also generate a fresh SBOM locally:
 
 ```bash
@@ -128,6 +155,8 @@ Set the following secrets under **Settings → Secrets and variables → Actions
 | `DOCKERHUB_USERNAME` | Docker Hub account username (e.g. `andyblooman`) |
 | `DOCKERHUB_TOKEN` | Docker Hub [access token](https://docs.docker.com/docker-hub/access-tokens/) with **Read & Write** permissions |
 | `ANTHROPIC_API_KEY` | Anthropic API key used by the Claude vulnerability-review step |
+| `APP_ID` | GitHub App ID for the security-engineer-agent (posts PR comments) |
+| `APP_PRIVATE_KEY` | GitHub App private key (PEM) for the security-engineer-agent |
 
 ### Reviewing vulnerability scan results
 
@@ -138,6 +167,8 @@ After each pipeline run:
 3. Expand the **Analyse scan results with Claude** step to read Claude's Markdown security report.
 4. Download the `grype-results-<image>` artefacts for raw Grype JSON output.
 5. Download the `sbom-<image>` artefacts for SPDX SBOMs.
+
+On pull requests, Claude's security summary is also posted automatically as a PR comment.
 
 Artefacts are retained for **90 days**.
 
@@ -170,13 +201,16 @@ Artefacts are retained for **90 days**.
 │  │  4. Syft SBOM generation      →  artefact (90-day retention) │   │
 │  │  5. Push to Docker Hub        (skipped on PRs)               │   │
 │  │  6. Cosign keyless sign       (skipped on PRs)               │   │
+│  │  7. Cosign attest SBOM        (skipped on PRs)               │   │
+│  │  8. Cosign attest provenance  (skipped on PRs)               │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  After all images:                                                  │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  7. Download all scan results                                │   │
-│  │  8. Claude (Anthropic API) analyses findings                 │   │
-│  │  9. Markdown report → GitHub Step Summary                    │   │
+│  │  9.  Download all scan results                               │   │
+│  │  10. Claude (Anthropic API) analyses findings                │   │
+│  │  11. Markdown report → GitHub Step Summary                   │   │
+│  │  12. Post report as PR comment  (PRs only)                   │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
