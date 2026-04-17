@@ -198,20 +198,37 @@ jobs:
             "builder": {
               "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             },
-            "buildType": "https://github.com/Attestations/GitHubActions@v1",
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
             "invocation": {
-              "parameters": {
-                "ref": "${{ github.ref_name }}",
-                "sha": "${{ github.sha }}"
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@${{ github.ref }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                },
+                "entryPoint": ".github/workflows/build-images.yml"
               },
+              "parameters": {},
               "environment": {
-                "repository": "${{ github.repository }}",
-                "trigger": "${{ github.event_name }}"
+                "github_event_name": "${{ github.event_name }}",
+                "github_ref": "${{ github.ref }}",
+                "github_run_id": "${{ github.run_id }}"
               }
+            },
+            "metadata": {
+              "buildInvocationID": "${{ github.run_id }}/${{ github.run_attempt }}",
+              "completeness": {
+                "parameters": false,
+                "environment": false,
+                "materials": false
+              },
+              "reproducible": false
             },
             "materials": [
               {
-                "uri": "git+https://github.com/${{ github.repository }}@${{ github.sha }}"
+                "uri": "git+https://github.com/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                }
               }
             ]
           }
