@@ -247,10 +247,21 @@ jobs:
     needs: build-and-push
     # Run even when some matrix jobs fail so we always get a security summary
     if: always()
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Generate GitHub App token
+        id: app-token
+        if: github.event_name == 'pull_request'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Download all Grype scan results
         uses: actions/download-artifact@v4
