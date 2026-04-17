@@ -246,6 +246,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          set -euo pipefail
           python3 .github/scripts/analyse-scan-results.py scan-results/ \
             | tee -a "$GITHUB_STEP_SUMMARY" > /tmp/claude-summary.md
 
