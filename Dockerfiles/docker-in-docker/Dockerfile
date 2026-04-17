@@ -1,4 +1,11 @@
 ARG DOCKER_VERSION=27
+
+# docker-dind has no apk; use wolfi-base to build the cert bundle then copy it in
+FROM cgr.dev/chainguard/wolfi-base AS cert-builder
+RUN apk add --no-cache ca-certificates
+COPY certs/ /usr/local/share/ca-certificates/custom/
+RUN update-ca-certificates
+
 FROM cgr.dev/chainguard/docker-dind:latest
 
 ARG BUILD_DATE
@@ -6,10 +13,7 @@ ARG VCS_REF
 ARG VERSION=27
 ARG IMAGE_SOURCE
 
-# Install ca-certificates and import custom certs from the repo's certs/ directory
-RUN apk add --no-cache ca-certificates
-COPY certs/ /usr/local/share/ca-certificates/custom/
-RUN update-ca-certificates
+COPY --from=cert-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # OCI-standard image labels
 LABEL org.opencontainers.image.title="Base Docker-in-Docker" \
