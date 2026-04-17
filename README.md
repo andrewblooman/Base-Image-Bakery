@@ -11,11 +11,11 @@ and Cosign (keyless signing) before it lands in the registry.
 
 | Image | Docker Hub | Base | Latest Version | Description |
 |-------|-----------|------|---------------|-------------|
-| Alpine | [`andrewblooman/base-alpine`](https://hub.docker.com/r/andrewblooman/base-alpine) | `alpine:3.21` | `3.21` | Lightweight Alpine Linux with common utilities and a non-root user |
-| Docker-in-Docker | [`andrewblooman/base-dind`](https://hub.docker.com/r/andrewblooman/base-dind) | `docker:27-dind` | `27` | Docker daemon inside Docker — for CI pipelines that need to build images |
-| Eclipse Temurin | [`andrewblooman/base-eclipse-temurin`](https://hub.docker.com/r/andrewblooman/base-eclipse-temurin) | `eclipse-temurin:21-jre-jammy` | `21` | Java 21 JRE with certs imported into both the OS and JVM truststore |
-| Python | [`andrewblooman/base-python`](https://hub.docker.com/r/andrewblooman/base-python) | `python:3.13-slim-bookworm` | `3.13` | Python 3.13 slim with `REQUESTS_CA_BUNDLE` pre-configured |
-| Golang | [`andrewblooman/base-golang`](https://hub.docker.com/r/andrewblooman/base-golang) | `golang:1.24-alpine` | `1.24` | Go 1.24 Alpine with static-build defaults and a non-root user |
+| Alpine | [`andyblooman/base-alpine`](https://hub.docker.com/repository/docker/andyblooman/base-alpine/general) | `alpine:3.21` | `3.21` | Lightweight Alpine Linux with common utilities and a non-root user |
+| Docker-in-Docker | [`andyblooman/base-dind`](https://hub.docker.com/repository/docker/andyblooman/base-dind/general) | `docker:27-dind` | `27` | Docker daemon inside Docker — for CI pipelines that need to build images |
+| Eclipse Temurin | [`andyblooman/base-eclipse-temurin`](https://hub.docker.com/repository/docker/andyblooman/base-eclipse-temurin/general) | `eclipse-temurin:21-jre-jammy` | `21` | Java 21 JRE with certs imported into both the OS and JVM truststore |
+| Python | [`andyblooman/base-python`](https://hub.docker.com/repository/docker/andyblooman/base-python/general) | `python:3.13-slim-bookworm` | `3.13` | Python 3.13 slim with `REQUESTS_CA_BUNDLE` pre-configured |
+| Golang | [`andyblooman/base-golang`](https://hub.docker.com/repository/docker/andyblooman/base-golang/general) | `golang:1.24-alpine` | `1.24` | Go 1.24 Alpine with static-build defaults and a non-root user |
 
 All images include:
 - ✅ Organisation CA certificates imported and trusted
@@ -33,17 +33,17 @@ All images include:
 ### Pulling an image
 
 ```bash
-docker pull andrewblooman/base-alpine:latest
-docker pull andrewblooman/base-python:3.13
-docker pull andrewblooman/base-eclipse-temurin:21
-docker pull andrewblooman/base-golang:1.24
-docker pull andrewblooman/base-dind:27
+docker pull andyblooman/base-alpine:latest
+docker pull andyblooman/base-python:3.13
+docker pull andyblooman/base-eclipse-temurin:21
+docker pull andyblooman/base-golang:1.24
+docker pull andyblooman/base-dind:27
 ```
 
 ### Using as a base in your own Dockerfile
 
 ```dockerfile
-FROM andrewblooman/base-python:3.13
+FROM andyblooman/base-python:3.13
 
 WORKDIR /app
 COPY requirements.txt .
@@ -63,7 +63,7 @@ keyless signing. Verify a signature before using an image in production:
 cosign verify \
   --certificate-identity-regexp="https://github.com/andrewblooman/Base-Image-Bakery/.github/workflows/build-images.yml" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  andrewblooman/base-alpine:latest
+  andyblooman/base-alpine:latest
 ```
 
 Replace `base-alpine` with the image you are verifying. A successful verification prints the
@@ -77,14 +77,14 @@ You can also generate a fresh SBOM locally:
 
 ```bash
 # Install Syft (https://github.com/anchore/syft)
-syft andrewblooman/base-alpine:latest --output spdx-json > sbom.spdx.json
+syft andyblooman/base-alpine:latest --output spdx-json > sbom.spdx.json
 ```
 
 ### Checking for vulnerabilities
 
 ```bash
 # Install Grype (https://github.com/anchore/grype)
-grype andrewblooman/base-alpine:latest
+grype andyblooman/base-alpine:latest
 ```
 
 ---
@@ -125,7 +125,7 @@ Set the following secrets under **Settings → Secrets and variables → Actions
 
 | Secret | Description |
 |--------|-------------|
-| `DOCKERHUB_USERNAME` | Docker Hub account username (e.g. `andrewblooman`) |
+| `DOCKERHUB_USERNAME` | Docker Hub account username (e.g. `andyblooman`) |
 | `DOCKERHUB_TOKEN` | Docker Hub [access token](https://docs.docker.com/docker-hub/access-tokens/) with **Read & Write** permissions |
 | `ANTHROPIC_API_KEY` | Anthropic API key used by the Claude vulnerability-review step |
 
