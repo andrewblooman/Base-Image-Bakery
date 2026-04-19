@@ -25,12 +25,6 @@ permissions:
   contents: read
   id-token: write   # Required for Cosign keyless signing via GitHub OIDC
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared matrix definition — referenced by every matrix job below
-# ─────────────────────────────────────────────────────────────────────────────
-env:
-  REGISTRY_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # 1. BUILD — compile each image locally and export as a tarball artifact
@@ -65,17 +59,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU (multi-arch support)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}
           tags: |
@@ -89,7 +83,7 @@ jobs:
             org.opencontainers.image.version=${{ matrix.image.version }}
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -109,7 +103,7 @@ jobs:
         run: docker save bakery/${{ matrix.image.name }}:scan-target -o /tmp/image-${{ matrix.image.name }}.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: image-${{ matrix.image.name }}
           path: /tmp/image-${{ matrix.image.name }}.tar
@@ -134,7 +128,7 @@ jobs:
 
     steps:
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: image-${{ matrix.image.name }}
           path: /tmp/
@@ -155,7 +149,7 @@ jobs:
             --file "grype-results-${{ matrix.image.name }}.json"
 
       - name: Upload Grype scan results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: grype-results-${{ matrix.image.name }}
@@ -181,7 +175,7 @@ jobs:
 
     steps:
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: image-${{ matrix.image.name }}
           path: /tmp/
@@ -202,7 +196,7 @@ jobs:
             --file "sbom-${{ matrix.image.name }}.spdx.json"
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-${{ matrix.image.name }}
           path: sbom-${{ matrix.image.name }}.spdx.json
@@ -247,23 +241,23 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU (multi-arch support)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}
           tags: |
@@ -278,7 +272,7 @@ jobs:
 
       - name: Build and push image to Docker Hub
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -297,7 +291,7 @@ jobs:
         run: echo "${{ steps.push.outputs.digest }}" > /tmp/digest-${{ matrix.image.name }}.txt
 
       - name: Upload digest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: digest-${{ matrix.image.name }}
           path: /tmp/digest-${{ matrix.image.name }}.txt
@@ -328,19 +322,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Download digest artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: digest-${{ matrix.image.name }}
           path: /tmp/
 
       - name: Download SBOM artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sbom-${{ matrix.image.name }}
 
@@ -421,10 +415,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all Grype scan results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: grype-results-*
           merge-multiple: true
@@ -441,7 +435,7 @@ jobs:
       - name: Generate GitHub App token
         id: app-token
         if: github.event_name == 'pull_request'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
