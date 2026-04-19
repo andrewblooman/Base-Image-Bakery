@@ -27,10 +27,10 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build each image locally, run vulnerability scan and generate SBOM
+  # 1. BUILD — compile each image locally and export as a tarball artifact
   # ─────────────────────────────────────────────────────────────────────────────
-  build-scan-sbom:
-    name: "Build & Scan: ${{ matrix.image.name }}"
+  build:
+    name: "Build: ${{ matrix.image.name }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -59,18 +59,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU (multi-arch support)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      # ── Generate OCI-standard tags and labels ──────────────────────────────
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}
           tags: |
@@ -83,9 +82,8 @@ jobs:
             org.opencontainers.image.vendor=Base Image Bakery
             org.opencontainers.image.version=${{ matrix.image.version }}
 
-      # ── Build locally for scanning (not pushed yet) ────────────────────────
-      - name: Build image (local, for scanning)
-        uses: docker/build-push-action@v6
+      - name: Build image
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -98,10 +96,46 @@ jobs:
             VCS_REF=${{ github.sha }}
             VERSION=${{ matrix.image.version }}
             IMAGE_SOURCE=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
-      # ── Vulnerability scan with Grype ──────────────────────────────────────
+      - name: Export image to tarball
+        run: docker save bakery/${{ matrix.image.name }}:scan-target -o /tmp/image-${{ matrix.image.name }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: image-${{ matrix.image.name }}
+          path: /tmp/image-${{ matrix.image.name }}.tar
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. SCAN — vulnerability scan with Grype (runs in parallel with sbom)
+  # ─────────────────────────────────────────────────────────────────────────────
+  scan:
+    name: "Scan: ${{ matrix.image.name }}"
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: alpine
+          - name: dind
+          - name: eclipse-temurin
+          - name: python
+          - name: golang
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: image-${{ matrix.image.name }}
+          path: /tmp/
+
+      - name: Load image
+        run: docker load -i /tmp/image-${{ matrix.image.name }}.tar
+
       - name: Install Grype
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
@@ -115,14 +149,40 @@ jobs:
             --file "grype-results-${{ matrix.image.name }}.json"
 
       - name: Upload Grype scan results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: grype-results-${{ matrix.image.name }}
           path: grype-results-${{ matrix.image.name }}.json
           retention-days: 90
 
-      # ── SBOM generation with Syft ──────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. SBOM — generate Software Bill of Materials with Syft (parallel with scan)
+  # ─────────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: "SBOM: ${{ matrix.image.name }}"
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: alpine
+          - name: dind
+          - name: eclipse-temurin
+          - name: python
+          - name: golang
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: image-${{ matrix.image.name }}
+          path: /tmp/
+
+      - name: Load image
+        run: docker load -i /tmp/image-${{ matrix.image.name }}.tar
+
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
@@ -136,20 +196,19 @@ jobs:
             --file "sbom-${{ matrix.image.name }}.spdx.json"
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-${{ matrix.image.name }}
           path: sbom-${{ matrix.image.name }}.spdx.json
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Push to Docker Hub, sign with Cosign, and attest SBOM + provenance
-  # Skipped on pull requests — only runs on push to main and scheduled builds
+  # 4. PUSH — build and push to Docker Hub (skipped on pull requests)
   # ─────────────────────────────────────────────────────────────────────────────
-  publish:
-    name: "Publish & Sign: ${{ matrix.image.name }}"
+  push:
+    name: "Push: ${{ matrix.image.name }}"
     runs-on: ubuntu-latest
-    needs: build-scan-sbom
+    needs: [scan, sbom]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
@@ -176,26 +235,29 @@ jobs:
             repo: base-golang
             version: "1.24"
 
+    outputs:
+      # Unused directly — digest is passed via artifact to support matrix fan-out
+      digest: ${{ steps.push.outputs.digest }}
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU (multi-arch support)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ── Generate OCI-standard tags and labels ──────────────────────────────
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}
           tags: |
@@ -208,10 +270,9 @@ jobs:
             org.opencontainers.image.vendor=Base Image Bakery
             org.opencontainers.image.version=${{ matrix.image.version }}
 
-      # ── Build and push to Docker Hub (GHA cache makes this fast) ──────────
       - name: Build and push image to Docker Hub
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -223,33 +284,77 @@ jobs:
             VCS_REF=${{ github.sha }}
             VERSION=${{ matrix.image.version }}
             IMAGE_SOURCE=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
-      # ── Keyless signing with Cosign (Sigstore / Fulcio / Rekor) ───────────
+      - name: Save digest for cosign job
+        run: echo "${{ steps.push.outputs.digest }}" > /tmp/digest-${{ matrix.image.name }}.txt
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: digest-${{ matrix.image.name }}
+          path: /tmp/digest-${{ matrix.image.name }}.txt
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 5. COSIGN — keyless sign and attest SBOM + provenance (skipped on PRs)
+  # ─────────────────────────────────────────────────────────────────────────────
+  cosign:
+    name: "Cosign: ${{ matrix.image.name }}"
+    runs-on: ubuntu-latest
+    needs: push
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: alpine
+            repo: base-alpine
+          - name: dind
+            repo: base-dind
+          - name: eclipse-temurin
+            repo: base-eclipse-temurin
+          - name: python
+            repo: base-python
+          - name: golang
+            repo: base-golang
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
-      - name: Sign container image with Cosign (keyless)
-        run: |
-          cosign sign --yes \
-            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
+      - name: Download digest artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: digest-${{ matrix.image.name }}
+          path: /tmp/
 
-      # ── Attest SBOM and build provenance (Sigstore / Rekor) ───────────────
       - name: Download SBOM artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sbom-${{ matrix.image.name }}
 
+      - name: Sign container image (keyless)
+        run: |
+          DIGEST=$(cat /tmp/digest-${{ matrix.image.name }}.txt)
+          cosign sign --yes \
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${DIGEST}"
+
       - name: Attest SBOM with Cosign
         run: |
+          DIGEST=$(cat /tmp/digest-${{ matrix.image.name }}.txt)
           cosign attest --yes \
             --predicate "sbom-${{ matrix.image.name }}.spdx.json" \
             --type spdxjson \
-            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${DIGEST}"
 
-      - name: Generate and attest build provenance
+      - name: Attest build provenance
         run: |
+          DIGEST=$(cat /tmp/digest-${{ matrix.image.name }}.txt)
           cat > provenance.json <<EOF
           {
             "builder": {
@@ -293,16 +398,16 @@ jobs:
           cosign attest --yes \
             --predicate provenance.json \
             --type slsaprovenance \
-            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${{ steps.push.outputs.digest }}"
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.repo }}@${DIGEST}"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Review all scan results with Claude after every build run
+  # 6. REVIEW — analyse all Grype results with Claude and post PR comment
   # ─────────────────────────────────────────────────────────────────────────────
-  review-scan-results:
+  review:
     name: Review Vulnerability Scan Results with Claude
     runs-on: ubuntu-latest
-    needs: build-scan-sbom
-    # Run even when some matrix jobs fail so we always get a security summary
+    needs: scan
+    # Run even when some matrix scan jobs fail so we always get a security summary
     if: always()
     permissions:
       contents: read
@@ -310,10 +415,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all Grype scan results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: grype-results-*
           merge-multiple: true
@@ -330,7 +435,7 @@ jobs:
       - name: Generate GitHub App token
         id: app-token
         if: github.event_name == 'pull_request'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
