@@ -116,6 +116,9 @@ jobs:
     name: "Scan: ${{ matrix.image.name }}"
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read
+      security-events: write  # required to upload SARIF to GitHub Security tab
     strategy:
       fail-fast: false
       matrix:
@@ -147,6 +150,9 @@ jobs:
           grype "bakery/${{ matrix.image.name }}:scan-target" \
             --output json \
             --file "grype-results-${{ matrix.image.name }}.json"
+          grype "bakery/${{ matrix.image.name }}:scan-target" \
+            --output sarif \
+            --file "grype-results-${{ matrix.image.name }}.sarif"
 
       - name: Upload Grype scan results
         uses: actions/upload-artifact@v6
@@ -155,6 +161,13 @@ jobs:
           name: grype-results-${{ matrix.image.name }}
           path: grype-results-${{ matrix.image.name }}.json
           retention-days: 90
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: grype-results-${{ matrix.image.name }}.sarif
+          category: grype-${{ matrix.image.name }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 3. SBOM — generate Software Bill of Materials with Syft (parallel with scan)
