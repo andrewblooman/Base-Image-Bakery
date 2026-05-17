@@ -1,5 +1,9 @@
 # Base Image Bakery 🍞
 
+[![Build and Publish Base Images](https://github.com/andrewblooman/Base-Image-Bakery/actions/workflows/build-images.yml/badge.svg)](https://github.com/andrewblooman/Base-Image-Bakery/actions/workflows/build-images.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Signed with Cosign](https://img.shields.io/badge/Signed%20with-Cosign-blue?logo=sigstore)](https://docs.sigstore.dev/cosign/overview/)
+
 An automated pipeline for building, scanning, signing and publishing hardened container base
 images to Docker Hub. Every image imports your organisation's CA certificates, applies
 the latest security patches, and is verified with Grype (vulnerability scanning), Syft (SBOM)
@@ -9,13 +13,13 @@ and Cosign (keyless signing) before it lands in the registry.
 
 ## Image Inventory
 
-| Image | Docker Hub | Base | Latest Version | Description |
-|-------|-----------|------|---------------|-------------|
-| Alpine | [`andyblooman/base-alpine`](https://hub.docker.com/repository/docker/andyblooman/base-alpine/general) | `alpine:3.21` | `3.21` | Lightweight Alpine Linux with common utilities and a non-root user |
-| Docker-in-Docker | [`andyblooman/base-dind`](https://hub.docker.com/repository/docker/andyblooman/base-dind/general) | `docker:27-dind` | `27` | Docker daemon inside Docker — for CI pipelines that need to build images |
-| Eclipse Temurin | [`andyblooman/base-eclipse-temurin`](https://hub.docker.com/repository/docker/andyblooman/base-eclipse-temurin/general) | `eclipse-temurin:21-jre-jammy` | `21` | Java 21 JRE with certs imported into both the OS and JVM truststore |
-| Python | [`andyblooman/base-python`](https://hub.docker.com/repository/docker/andyblooman/base-python/general) | `python:3.13-slim-bookworm` | `3.13` | Python 3.13 slim with `REQUESTS_CA_BUNDLE` pre-configured |
-| Golang | [`andyblooman/base-golang`](https://hub.docker.com/repository/docker/andyblooman/base-golang/general) | `golang:1.24-alpine` | `1.24` | Go 1.24 Alpine with static-build defaults and a non-root user |
+| Image | Docker Hub | Base | Latest Version | Description | Pulls |
+|-------|-----------|------|---------------|-------------|-------|
+| Alpine | [`andyblooman/base-alpine`](https://hub.docker.com/repository/docker/andyblooman/base-alpine/general) | `alpine:3.21` | `3.21` | Lightweight Alpine Linux with common utilities and a non-root user | ![Docker Pulls](https://img.shields.io/docker/pulls/andyblooman/base-alpine) |
+| Docker-in-Docker | [`andyblooman/base-dind`](https://hub.docker.com/repository/docker/andyblooman/base-dind/general) | `docker:27-dind` | `27` | Docker daemon inside Docker — for CI pipelines that need to build images | ![Docker Pulls](https://img.shields.io/docker/pulls/andyblooman/base-dind) |
+| Eclipse Temurin | [`andyblooman/base-eclipse-temurin`](https://hub.docker.com/repository/docker/andyblooman/base-eclipse-temurin/general) | `eclipse-temurin:21-jre-jammy` | `21` | Java 21 JRE with certs imported into both the OS and JVM truststore | ![Docker Pulls](https://img.shields.io/docker/pulls/andyblooman/base-eclipse-temurin) |
+| Python | [`andyblooman/base-python`](https://hub.docker.com/repository/docker/andyblooman/base-python/general) | `python:3.13-slim-bookworm` | `3.13` | Python 3.13 slim with `REQUESTS_CA_BUNDLE` pre-configured | ![Docker Pulls](https://img.shields.io/docker/pulls/andyblooman/base-python) |
+| Golang | [`andyblooman/base-golang`](https://hub.docker.com/repository/docker/andyblooman/base-golang/general) | `golang:1.24-alpine` | `1.24` | Go 1.24 Alpine with static-build defaults and a non-root user | ![Docker Pulls](https://img.shields.io/docker/pulls/andyblooman/base-golang) |
 
 All images include:
 - ✅ Organisation CA certificates imported and trusted
